@@ -28,25 +28,25 @@ int ifc_enable(const char *ifname);
 int ifc_disable(const char *ifname);
 int ifc_reset_connections(const char *ifname, int reset_mask);
 
-int dhcp_do_request(const char * const ifname,
+int dhcp_do_request(const char *ifname,
                     const char *ipaddr,
                     const char *gateway,
                     uint32_t *prefixLength,
-                    const char *dns[],
+                    const char *dns1,
+                    const char *dns2,
                     const char *server,
                     uint32_t *lease,
-                    const char *vendorInfo,
-                    const char *domains);
+                    const char *vendorInfo);
 
-int dhcp_do_request_renew(const char * const ifname,
+int dhcp_do_request_renew(const char *ifname,
                     const char *ipaddr,
                     const char *gateway,
                     uint32_t *prefixLength,
-                    const char *dns[],
+                    const char *dns1,
+                    const char *dns2,
                     const char *server,
                     uint32_t *lease,
-                    const char *vendorInfo,
-                    const char *domains);
+                    const char *vendorInfo);
 
 int dhcp_stop(const char *ifname);
 int dhcp_release_lease(const char *ifname);
@@ -63,16 +63,15 @@ namespace android {
  * to look them up every time.
  */
 static struct fieldIds {
-    jmethodID clear;
-    jmethodID setInterfaceName;
-    jmethodID addLinkAddress;
-    jmethodID addGateway;
-    jmethodID addDns;
-    jmethodID setDomains;
-    jmethodID setServerAddress;
-    jmethodID setLeaseDuration;
-    jmethodID setVendorInfo;
-} dhcpResultsFieldIds;
+    jmethodID constructorId;
+    jfieldID ipaddress;
+    jfieldID prefixLength;
+    jfieldID dns1;
+    jfieldID dns2;
+    jfieldID serverAddress;
+    jfieldID leaseDuration;
+    jfieldID vendorInfo;
+} dhcpInfoInternalFieldIds;
 
 static jint android_net_utils_enableInterface(JNIEnv* env, jobject clazz, jstring ifname)
 {
@@ -110,7 +109,7 @@ static jint android_net_utils_resetConnections(JNIEnv* env, jobject clazz,
 }
 
 static jboolean android_net_utils_runDhcpCommon(JNIEnv* env, jobject clazz, jstring ifname,
-        jobject dhcpResults, bool renew)
+        jobject info, bool renew)
 {
     int result;
     char  ipaddr[PROPERTY_VALUE_MAX];
@@ -118,90 +117,89 @@ static jboolean android_net_utils_runDhcpCommon(JNIEnv* env, jobject clazz, jstr
     char gateway[PROPERTY_VALUE_MAX];
     char    dns1[PROPERTY_VALUE_MAX];
     char    dns2[PROPERTY_VALUE_MAX];
-    char    dns3[PROPERTY_VALUE_MAX];
-    char    dns4[PROPERTY_VALUE_MAX];
-    const char *dns[5] = {dns1, dns2, dns3, dns4, NULL};
     char  server[PROPERTY_VALUE_MAX];
     uint32_t lease;
     char vendorInfo[PROPERTY_VALUE_MAX];
-    char domains[PROPERTY_VALUE_MAX];
 
     const char *nameStr = env->GetStringUTFChars(ifname, NULL);
     if (nameStr == NULL) return (jboolean)false;
 
     if (renew) {
         result = ::dhcp_do_request_renew(nameStr, ipaddr, gateway, &prefixLength,
-                dns, server, &lease, vendorInfo, domains);
+                dns1, dns2, server, &lease, vendorInfo);
     } else {
         result = ::dhcp_do_request(nameStr, ipaddr, gateway, &prefixLength,
-                dns, server, &lease, vendorInfo, domains);
-    }
-    if (result != 0) {
-        ALOGD("dhcp_do_request failed");
+                dns1, dns2, server, &lease, vendorInfo);
     }
 
     env->ReleaseStringUTFChars(ifname, nameStr);
     if (result == 0) {
-        env->CallVoidMethod(dhcpResults, dhcpResultsFieldIds.clear);
+        env->SetObjectField(info, dhcpInfoInternalFieldIds.ipaddress, env->NewStringUTF(ipaddr));
 
-        // set mIfaceName
-        // dhcpResults->setInterfaceName(ifname)
-        env->CallVoidMethod(dhcpResults, dhcpResultsFieldIds.setInterfaceName, ifname);
-
-        // set the linkAddress
-        // dhcpResults->addLinkAddress(inetAddress, prefixLength)
-        result = env->CallBooleanMethod(dhcpResults, dhcpResultsFieldIds.addLinkAddress,
-                env->NewStringUTF(ipaddr), prefixLength);
-    }
-
-    if (result == 0) {
         // set the gateway
-        // dhcpResults->addGateway(gateway)
-        result = env->CallBooleanMethod(dhcpResults,
-                dhcpResultsFieldIds.addGateway, env->NewStringUTF(gateway));
-    }
+        jclass cls = env->FindClass("java/net/InetAddress");
+        jmethodID method = env->GetStaticMethodID(cls, "getByName",
+                "(Ljava/lang/String;)Ljava/net/InetAddress;");
+        jvalue args[1];
+        args[0].l = env->NewStringUTF(gateway);
+        jobject inetAddressObject = env->CallStaticObjectMethodA(cls, method, args);
 
-    if (result == 0) {
-        // dhcpResults->addDns(new InetAddress(dns1))
-        result = env->CallBooleanMethod(dhcpResults,
-                dhcpResultsFieldIds.addDns, env->NewStringUTF(dns1));
-    }
+        if (!env->ExceptionOccurred()) {
+            cls = env->FindClass("android/net/RouteInfo");
+            method = env->GetMethodID(cls, "<init>", "(Ljava/net/InetAddress;)V");
+            args[0].l = inetAddressObject;
+            jobject routeInfoObject = env->NewObjectA(cls, method, args);
 
-    if (result == 0) {
-        env->CallVoidMethod(dhcpResults, dhcpResultsFieldIds.setDomains,
-                env->NewStringUTF(domains));
-
-        result = env->CallBooleanMethod(dhcpResults,
-                dhcpResultsFieldIds.addDns, env->NewStringUTF(dns2));
-
-        if (result == 0) {
-            result = env->CallBooleanMethod(dhcpResults,
-                    dhcpResultsFieldIds.addDns, env->NewStringUTF(dns3));
-            if (result == 0) {
-                result = env->CallBooleanMethod(dhcpResults,
-                        dhcpResultsFieldIds.addDns, env->NewStringUTF(dns4));
-            }
+            cls = env->FindClass("android/net/DhcpInfoInternal");
+            method = env->GetMethodID(cls, "addRoute", "(Landroid/net/RouteInfo;)V");
+            args[0].l = routeInfoObject;
+            env->CallVoidMethodA(info, method, args);
+        } else {
+            // if we have an exception (host not found perhaps), just don't add the route
+            env->ExceptionClear();
         }
-    }
 
-    if (result == 0) {
-        // dhcpResults->setServerAddress(new InetAddress(server))
-        result = env->CallBooleanMethod(dhcpResults, dhcpResultsFieldIds.setServerAddress,
+        env->SetIntField(info, dhcpInfoInternalFieldIds.prefixLength, prefixLength);
+        env->SetObjectField(info, dhcpInfoInternalFieldIds.dns1, env->NewStringUTF(dns1));
+        env->SetObjectField(info, dhcpInfoInternalFieldIds.dns2, env->NewStringUTF(dns2));
+        env->SetObjectField(info, dhcpInfoInternalFieldIds.serverAddress,
                 env->NewStringUTF(server));
-    }
-
-    if (result == 0) {
-        // dhcpResults->setLeaseDuration(lease)
-        env->CallVoidMethod(dhcpResults,
-                dhcpResultsFieldIds.setLeaseDuration, lease);
-
-        // dhcpResults->setVendorInfo(vendorInfo)
-        env->CallVoidMethod(dhcpResults, dhcpResultsFieldIds.setVendorInfo,
-                env->NewStringUTF(vendorInfo));
+        env->SetIntField(info, dhcpInfoInternalFieldIds.leaseDuration, lease);
+        env->SetObjectField(info, dhcpInfoInternalFieldIds.vendorInfo, env->NewStringUTF(vendorInfo));
     }
     return (jboolean)(result == 0);
 }
 
+#ifdef BOARD_HAVE_SQN_WIMAX
+static jint android_net_utils_addRoutingRule(JNIEnv* env,
+        jobject clazz,
+        jstring param1,
+        jstring param2,
+        jstring param3,
+        jint param4) {
+        int result = 0;
+        return (jint)result;
+}
+
+static jint android_net_utils_delRoutingRule(JNIEnv* env,
+        jobject clazz,
+        jstring param1,
+        jstring param2,
+        jstring param3,
+        jint param4) {
+        int result = 0;
+        return (jint)result;
+}
+
+static jint android_net_utils_addRoutingTable(JNIEnv* env,
+        jobject clazz,
+        jstring param1,
+        jstring param2,
+        jstring param3) {
+        int result = 0;
+        return (jint)result;
+}
+#endif
 
 static jboolean android_net_utils_runDhcp(JNIEnv* env, jobject clazz, jstring ifname, jobject info)
 {
@@ -250,35 +248,30 @@ static JNINativeMethod gNetworkUtilMethods[] = {
     { "enableInterface", "(Ljava/lang/String;)I",  (void *)android_net_utils_enableInterface },
     { "disableInterface", "(Ljava/lang/String;)I",  (void *)android_net_utils_disableInterface },
     { "resetConnections", "(Ljava/lang/String;I)I",  (void *)android_net_utils_resetConnections },
-    { "runDhcp", "(Ljava/lang/String;Landroid/net/DhcpResults;)Z",  (void *)android_net_utils_runDhcp },
-    { "runDhcpRenew", "(Ljava/lang/String;Landroid/net/DhcpResults;)Z",  (void *)android_net_utils_runDhcpRenew },
+    { "runDhcp", "(Ljava/lang/String;Landroid/net/DhcpInfoInternal;)Z",  (void *)android_net_utils_runDhcp },
+    { "runDhcpRenew", "(Ljava/lang/String;Landroid/net/DhcpInfoInternal;)Z",  (void *)android_net_utils_runDhcpRenew },
     { "stopDhcp", "(Ljava/lang/String;)Z",  (void *)android_net_utils_stopDhcp },
     { "releaseDhcpLease", "(Ljava/lang/String;)Z",  (void *)android_net_utils_releaseDhcpLease },
     { "getDhcpError", "()Ljava/lang/String;", (void*) android_net_utils_getDhcpError },
+#ifdef BOARD_HAVE_SQN_WIMAX
+    { "addRoutingRule", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)I", (void*) android_net_utils_addRoutingRule },
+    { "delRoutingRule", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;I)I", (void*) android_net_utils_delRoutingRule },
+    { "addRoutingTable", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I", (void*) android_net_utils_addRoutingTable },
+#endif
 };
 
 int register_android_net_NetworkUtils(JNIEnv* env)
 {
-    jclass dhcpResultsClass = env->FindClass("android/net/DhcpResults");
-    LOG_FATAL_IF(dhcpResultsClass == NULL, "Unable to find class android/net/DhcpResults");
-    dhcpResultsFieldIds.clear =
-            env->GetMethodID(dhcpResultsClass, "clear", "()V");
-    dhcpResultsFieldIds.setInterfaceName =
-            env->GetMethodID(dhcpResultsClass, "setInterfaceName", "(Ljava/lang/String;)V");
-    dhcpResultsFieldIds.addLinkAddress =
-            env->GetMethodID(dhcpResultsClass, "addLinkAddress", "(Ljava/lang/String;I)Z");
-    dhcpResultsFieldIds.addGateway =
-            env->GetMethodID(dhcpResultsClass, "addGateway", "(Ljava/lang/String;)Z");
-    dhcpResultsFieldIds.addDns =
-            env->GetMethodID(dhcpResultsClass, "addDns", "(Ljava/lang/String;)Z");
-    dhcpResultsFieldIds.setDomains =
-            env->GetMethodID(dhcpResultsClass, "setDomains", "(Ljava/lang/String;)V");
-    dhcpResultsFieldIds.setServerAddress =
-            env->GetMethodID(dhcpResultsClass, "setServerAddress", "(Ljava/lang/String;)Z");
-    dhcpResultsFieldIds.setLeaseDuration =
-            env->GetMethodID(dhcpResultsClass, "setLeaseDuration", "(I)V");
-    dhcpResultsFieldIds.setVendorInfo =
-            env->GetMethodID(dhcpResultsClass, "setVendorInfo", "(Ljava/lang/String;)V");
+    jclass dhcpInfoInternalClass = env->FindClass("android/net/DhcpInfoInternal");
+    LOG_FATAL_IF(dhcpInfoInternalClass == NULL, "Unable to find class android/net/DhcpInfoInternal");
+    dhcpInfoInternalFieldIds.constructorId = env->GetMethodID(dhcpInfoInternalClass, "<init>", "()V");
+    dhcpInfoInternalFieldIds.ipaddress = env->GetFieldID(dhcpInfoInternalClass, "ipAddress", "Ljava/lang/String;");
+    dhcpInfoInternalFieldIds.prefixLength = env->GetFieldID(dhcpInfoInternalClass, "prefixLength", "I");
+    dhcpInfoInternalFieldIds.dns1 = env->GetFieldID(dhcpInfoInternalClass, "dns1", "Ljava/lang/String;");
+    dhcpInfoInternalFieldIds.dns2 = env->GetFieldID(dhcpInfoInternalClass, "dns2", "Ljava/lang/String;");
+    dhcpInfoInternalFieldIds.serverAddress = env->GetFieldID(dhcpInfoInternalClass, "serverAddress", "Ljava/lang/String;");
+    dhcpInfoInternalFieldIds.leaseDuration = env->GetFieldID(dhcpInfoInternalClass, "leaseDuration", "I");
+    dhcpInfoInternalFieldIds.vendorInfo = env->GetFieldID(dhcpInfoInternalClass, "vendorInfo", "Ljava/lang/String;");
 
     return AndroidRuntime::registerNativeMethods(env,
             NETUTILS_PKG_NAME, gNetworkUtilMethods, NELEM(gNetworkUtilMethods));
