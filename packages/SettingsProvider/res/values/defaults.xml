@@ -174,6 +174,31 @@
     <!-- Default for Settings.Secure.USER_SETUP_COMPLETE -->
     <bool name="def_user_setup_complete">false</bool>
 
-    <!-- Default for Settings.System.STATUS_BAR_BATTERY -->
+    <!-- Default for Settings.System.STATUS_BAR_BATTERY.
+    0. Icon
+    1. Text only
+    2. Icon with text
+    3. Icon with centered text
+    4. Circle mod (AOKPs)
+    5. Circle mod (CMs)
+    6. Gauge
+    7. Axiom honeycomb
+    8. Axiom droid
+    9. Axiomsphere
+    10. Numbers
+    11. Digital numbers
+    12. None/Hidden -->
     <integer name="def_battery_style">0</integer>
+
+    <!-- Default for Settings.System.STATUS_BAR_NOTIF_COUNT. -->
+   <integer name="def_notif_count">0</integer>
+
+    <!-- Default for Settings.System.QS_QUICK_PULLDOWN.
+    0. Off
+    1. Right
+    2. Left -->
+    <integer name="def_qs_quick_pulldown">0</integer>
+
+    <!-- Default for Settings.System.LOCKSCREEN_TARGETS. -->
+    <string name="def_lockscreen_targets" translatable="false"></string>
 </resources>
