@@ -2824,12 +2824,6 @@ public final class Settings {
          * @hide
          */
         public static final String EXPANDED_DESKTOP_STATE = "expanded_desktop_state";
-		
-       /**
-	* Restart Launcher
-	* @hide
-	*/
-        public static final String EXPANDED_DESKTOP_RESTART_LAUNCHER = "expanded_desktop_restart_launcher";
 
        /**
         * Override and forcefully disable the fullscreen keyboard
@@ -2993,7 +2987,7 @@ public final class Settings {
         public static final String PIE_GAP = "pie_gap";
 
         /**
-         * Pie empty angle, should default to 0
+         * Pie empty angle, should default to 12
          * @hide
          */
         public static final String PIE_ANGLE = "pie_angle";
@@ -4275,6 +4269,13 @@ public final class Settings {
          * @hide
          */
         public static final String MUTE_ANNOYING_NOTIFICATIONS_THRESHOLD = "mute_annoying_notifications_threshold";
+
+        /**
+         * Volume key controls ringtone or media sound stream
+         *
+         * @hide
+         */
+        public static final String VOLUME_KEYS_CONTROL_RING_STREAM = "volume_keys_control_ring_stream";
 
         /**
          * Settings to backup. This is here so that it's in the same place as the settings
