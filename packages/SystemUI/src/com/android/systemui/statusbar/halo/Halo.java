@@ -825,7 +825,7 @@ public class Halo extends FrameLayout implements Ticker.TickerCallback {
 
                     mPingX = mHaloX + mIconHalfSize;
                     mPingY = mHaloY + mIconHalfSize;
-;
+
                     mPingPaint = paint;
 
                     int c = Color.argb(0xff, Color.red(paint.getColor()), Color.green(paint.getColor()), Color.blue(paint.getColor()));
