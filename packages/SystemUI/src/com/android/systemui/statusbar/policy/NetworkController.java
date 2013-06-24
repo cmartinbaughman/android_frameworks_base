@@ -620,17 +620,10 @@ public class NetworkController extends BroadcastReceiver {
         } else {
             switch (mDataNetType) {
                 case TelephonyManager.NETWORK_TYPE_UNKNOWN:
-                    if (!mShowAtLeastThreeGees) {
-                        mDataIconList = mUseAltSignal ? TelephonyIcons.DATA_G_ALT[mInetCondition] :
-                            TelephonyIcons.DATA_G[mInetCondition];
-                        mDataTypeIconId = 0;
-                        mQSDataTypeIconId = 0;
-                        mContentDescriptionDataType = mContext.getString(
-                                R.string.accessibility_data_connection_gprs);
+                        mDataIconList = TelephonyIcons.DATA_4G[mInetCondition];
+		          mDataTypeIconId = mDataIconList[0];
+             		   mQSDataTypeIconId = (isConnected ? R.drawable.ic_qs_signal_full_4g : R.drawable.ic_qs_signal_4g);
                         break;
-                    } else {
-                        // fall through
-                    }
                 case TelephonyManager.NETWORK_TYPE_EDGE:
                     if (!mShowAtLeastThreeGees) {
                         mDataIconList = mUseAltSignal ? TelephonyIcons.DATA_E_ALT[mInetCondition] :
@@ -718,6 +711,7 @@ public class NetworkController extends BroadcastReceiver {
                     }
                 case TelephonyManager.NETWORK_TYPE_EVDO_0: //fall through
                 case TelephonyManager.NETWORK_TYPE_EVDO_A:
+			            Slog.d("CMBNetDetect", "mDataNetType " + mDataNetType + " mWimaxConnected " + mWimaxConnected);
                 case TelephonyManager.NETWORK_TYPE_EVDO_B:
                 case TelephonyManager.NETWORK_TYPE_EHRPD:
                     mDataIconList = mUseAltSignal ? TelephonyIcons.DATA_3G_ALT[mInetCondition] :
