@@ -25,6 +25,9 @@ import android.app.IProfileManager;
 import android.app.NotificationGroup;
 import android.app.Profile;
 import android.app.ProfileGroup;
+import android.app.backup.BackupManager;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -32,12 +35,14 @@ import android.content.IntentFilter;
 import android.content.res.XmlResourceParser;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiManager;
+import android.os.Environment;
 import android.os.RemoteException;
 import android.os.UserHandle;
 import android.text.TextUtils;
 import android.util.Log;
 import android.os.ParcelUuid;
 
+import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -68,7 +73,8 @@ public class ProfileManagerService extends IProfileManager.Stub {
 
     public static final String PERMISSION_CHANGE_SETTINGS = "android.permission.WRITE_SETTINGS";
 
-    private static final String PROFILE_FILENAME = "/data/system/profiles.xml";
+    /* package */ static final File PROFILE_FILE =
+            new File(Environment.getSystemSecureDirectory(), "profiles.xml");
 
     private static final String TAG = "ProfileService";
 
@@ -89,13 +95,12 @@ public class ProfileManagerService extends IProfileManager.Stub {
     private boolean mDirty;
 
     private WifiManager mWifiManager;
-    private String mlastConnectedSSID;
+    private String mLastConnectedSSID;
 
     private BroadcastReceiver mIntentReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-
             if (action.equals(Intent.ACTION_LOCALE_CHANGED)) {
                 persistIfDirty();
                 initialize();
@@ -108,7 +113,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
                 switch (state) {
                     case COMPLETED:
                         triggerState = Profile.TriggerState.ON_CONNECT;
-                        mlastConnectedSSID = getActiveSSID();
+                        mLastConnectedSSID = getActiveSSID();
                         break;
                     case DISCONNECTED:
                         triggerState = Profile.TriggerState.ON_DISCONNECT;
@@ -116,14 +121,27 @@ public class ProfileManagerService extends IProfileManager.Stub {
                     default:
                         return;
                 }
-                for (Profile p : mProfiles.values()) {
-                    if (triggerState ==  p.getWifiTrigger(mlastConnectedSSID)) {
-                        try {
-                            setActiveProfile(p, true);
-                        } catch (RemoteException e) {
-                            Log.e(TAG, "Could not update profile on wifi AP change", e);
-                        }
-                    }
+                checkTriggers(Profile.TriggerType.WIFI, mLastConnectedSSID, triggerState);
+            } else if (action.equals(BluetoothDevice.ACTION_ACL_CONNECTED)
+                    || action.equals(BluetoothDevice.ACTION_ACL_DISCONNECTED)) {
+                int triggerState = action.equals(BluetoothDevice.ACTION_ACL_CONNECTED)
+                        ? Profile.TriggerState.ON_CONNECT : Profile.TriggerState.ON_DISCONNECT;
+                BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+
+                checkTriggers(Profile.TriggerType.BLUETOOTH, device.getAddress(), triggerState);
+            }
+        }
+
+        private void checkTriggers(int type, String id, int newState) {
+            for (Profile p : mProfiles.values()) {
+                if (newState != p.getTrigger(type, id)) {
+                    continue;
+                }
+
+                try {
+                    setActiveProfile(p, true);
+                } catch (RemoteException e) {
+                    Log.e(TAG, "Could not update profile on trigger", e);
                 }
             }
         }
@@ -132,7 +150,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
     public ProfileManagerService(Context context) {
         mContext = context;
         mWifiManager = (WifiManager)mContext.getSystemService(Context.WIFI_SERVICE);
-        mlastConnectedSSID = getActiveSSID();
+        mLastConnectedSSID = getActiveSSID();
 
         mWildcardGroup = new NotificationGroup(
                 context.getString(com.android.internal.R.string.wildcardProfile),
@@ -145,6 +163,8 @@ public class ProfileManagerService extends IProfileManager.Stub {
         filter.addAction(Intent.ACTION_LOCALE_CHANGED);
         filter.addAction(Intent.ACTION_SHUTDOWN);
         filter.addAction(WifiManager.SUPPLICANT_STATE_CHANGED_ACTION);
+        filter.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+        filter.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
         mContext.registerReceiver(mIntentReceiver, filter);
     }
 
@@ -160,7 +180,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
 
         boolean init = skipFile;
 
-        if (! skipFile) {
+        if (!skipFile) {
             try {
                 loadFromFile();
             } catch (RemoteException e) {
@@ -477,10 +497,19 @@ public class ProfileManagerService extends IProfileManager.Stub {
         return null;
     }
 
+    // Called by SystemBackupAgent after files are restored to disk.
+    void settingsRestored() {
+        initialize();
+        for (Profile p : mProfiles.values()) {
+            p.validateRingtones(mContext);
+        }
+        persistIfDirty();
+    }
+
     private void loadFromFile() throws RemoteException, XmlPullParserException, IOException {
         XmlPullParserFactory xppf = XmlPullParserFactory.newInstance();
         XmlPullParser xpp = xppf.newPullParser();
-        FileReader fr = new FileReader(PROFILE_FILENAME);
+        FileReader fr = new FileReader(PROFILE_FILE);
         xpp.setInput(fr);
         loadXml(xpp, mContext);
         fr.close();
@@ -509,7 +538,7 @@ public class ProfileManagerService extends IProfileManager.Stub {
                     addNotificationGroupInternal(ng);
                 }
             } else if (event == XmlPullParser.END_DOCUMENT) {
-                throw new IOException("Premature end of file while reading " + PROFILE_FILENAME);
+                throw new IOException("Premature end of file while reading " + PROFILE_FILE);
             }
             event = xpp.next();
         }
@@ -588,11 +617,16 @@ public class ProfileManagerService extends IProfileManager.Stub {
         if (dirty) {
             try {
                 Log.d(TAG, "Saving profile data...");
-                FileWriter fw = new FileWriter(PROFILE_FILENAME);
+                FileWriter fw = new FileWriter(PROFILE_FILE);
                 fw.write(getXmlString());
                 fw.close();
                 Log.d(TAG, "Save completed.");
                 mDirty = false;
+
+                long token = clearCallingIdentity();
+                BackupManager bm = new BackupManager(mContext);
+                bm.dataChanged();
+                restoreCallingIdentity(token);
             } catch (Throwable e) {
                 e.printStackTrace();
             }
