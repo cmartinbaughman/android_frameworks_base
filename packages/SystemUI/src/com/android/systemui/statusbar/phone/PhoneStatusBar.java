@@ -690,18 +690,11 @@ public class PhoneStatusBar extends BaseStatusBar {
         // Other icons
         mLocationController = new LocationController(mContext); // will post a notification
         mBatteryController = new BatteryController(mContext);
-        mBatteryController.addIconView((ImageView)mStatusBarView.findViewById(R.id.battery));
         mSbBatteryController = (SbBatteryController)mStatusBarView.findViewById(R.id.battery_cluster);
         mNetworkController = new NetworkController(mContext);
         mBluetoothController = new BluetoothController(mContext);
         mSignalCluster =
                 (SignalClusterView)mStatusBarView.findViewById(R.id.signal_cluster);
-
-        mNetworkController.addSignalCluster(mSignalCluster);
-        mSignalCluster.setNetworkController(mNetworkController);
-
-        mSignalCluster = 
-                (SignalClusterView)mStatusBarView.findViewById(R.id.signal_cluster_alt);
 
         mNetworkController.addSignalCluster(mSignalCluster);
         mSignalCluster.setNetworkController(mNetworkController);
