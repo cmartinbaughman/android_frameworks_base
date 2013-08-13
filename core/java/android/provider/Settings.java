@@ -57,6 +57,7 @@ import android.util.Log;
 import com.android.internal.widget.ILockSettings;
 
 import java.net.URISyntaxException;
+import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -828,15 +829,20 @@ public final class Settings {
 
         public boolean putStringForUser(ContentResolver cr, String name, String value,
                 final int userHandle) {
-            try {
-                Bundle arg = new Bundle();
-                arg.putString(Settings.NameValueTable.VALUE, value);
-                arg.putInt(CALL_METHOD_USER_KEY, userHandle);
-                IContentProvider cp = lazyGetProvider(cr);
-                cp.call(cr.getPackageName(), mCallSetCommand, name, arg);
-            } catch (RemoteException e) {
-                Log.w(TAG, "Can't set key " + name + " in " + mUri, e);
-                return false;
+            if (Arrays.asList(
+                    Settings.System.INSECURE_SETTINGS).contains(name)) {
+                NameValueTable.putString(cr, mUri, name, value);
+            } else {
+                try {
+                    Bundle arg = new Bundle();
+                    arg.putString(Settings.NameValueTable.VALUE, value);
+                    arg.putInt(CALL_METHOD_USER_KEY, userHandle);
+                    IContentProvider cp = lazyGetProvider(cr);
+                    cp.call(cr.getPackageName(), mCallSetCommand, name, arg);
+                } catch (RemoteException e) {
+                    Log.w(TAG, "Can't set key " + name + " in " + mUri, e);
+                    return false;
+                }
             }
             return true;
         }
@@ -1899,6 +1905,12 @@ public final class Settings {
          *
          * @hide */
         public static final String ELECTRON_BEAM_ANIMATION_ON = "electron_beam_animation_on";
+        /**
+         * Whether to enable adjustment of automatic brightness adjustment
+         * to sunrise and sunset.
+         * @hide
+         */
+        public static final String AUTO_BRIGHTNESS_TWILIGHT_ADJUSTMENT = "auto_brightness_twilight_adjustment";
 
         /**
          * Whether to enable the electron beam animation when turning screen off
@@ -2928,44 +2940,11 @@ public final class Settings {
         public static final String COMBINED_BAR_AUTO_HIDE = "combined_bar_auto_hide";
 
         /**
-         * Display style of AM/PM next to clock in status bar
-         * 0: Normal display (Eclair stock)
-         * 1: Small display (Froyo stock)
-         * 2: No display (Gingerbread/ICS stock)
-         * default: 2
+         * Network speed indicator
          * @hide
          */
-        public static final String STATUS_BAR_AM_PM = "status_bar_am_pm";
+        public static final String STATUS_BAR_TRAFFIC = "status_bar_traffic";
 
-        /**
-         * Display style of the status bar battery information
-         * 0: Display the stock battery information
-         * 1: Display cm battery percentage implementation / dont show stock icon
-         * 2: Hide the battery information
-         * default: 0
-         * @hide
-         */
-        public static final String STATUS_BAR_BATTERY = "status_bar_battery";
-
-        /**
-         * Whether to show the clock in status bar
-         * of the stock battery icon
-         * 0: don't show the clock
-         * 1: show the clock
-         * default: 1
-         * @hide
-         */
-        public static final String STATUS_BAR_CLOCK = "status_bar_clock";
-
-        /**
-         * Whether to show the signal text or signal bars.
-         * default: 0
-         * 0: show signal bars
-         * 1: show signal text numbers
-         * 2: show signal text numbers w/small dBm appended
-         * @hide
-         */
-        public static final String STATUS_BAR_SIGNAL_TEXT = "status_bar_signal";
 
          /**
          * Whether to control brightness from status bar
@@ -3268,6 +3247,33 @@ public final class Settings {
          * @hide
          */
         public static final String STATUS_BAR_DONOTDISTURB = "status_bar_donotdisturb";
+
+        /**
+         * @hide
+         */
+        public static final String WEATHER_PANEL_LONGCLICK = "weather_panel_longclick";
+
+        /**
+         * @hide
+         */
+        public static final String WEATHER_PANEL_SHORTCLICK = "weather_panel_shortclick";
+
+        /**
+         * How to show weather on the statusbar
+         *
+         * @hide
+         */
+        public static final String STATUSBAR_WEATHER_STYLE = "statusbar_weather_style";
+
+        /**
+         * @hide
+         */
+        public static final String USE_WEATHER = "use_weather";
+
+        /**
+         * @hide
+         */
+        public static final String WEATHER_SHOW_LOCATION = "weather_show_location";
 
         /**
          * Maximal notification count as overlays on the status bar
@@ -4924,6 +4930,7 @@ public final class Settings {
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_SHOW_ERROR_PATH);
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_DOTS_VISIBLE);
             MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_PATTERN_TACTILE_FEEDBACK_ENABLED);
+            MOVED_TO_LOCK_SETTINGS.add(Secure.LOCK_SYNC_ENCRYPTION_PASSWORD);
 
             MOVED_TO_GLOBAL = new HashSet<String>();
             MOVED_TO_GLOBAL.add(Settings.Global.ADB_ENABLED);
@@ -5636,6 +5643,13 @@ public final class Settings {
          */
         public static final String LOCK_PATTERN_SIZE =
             "lock_pattern_size";
+
+        /**
+         * Whether to sync encryption password with lock screen token
+         * @hide
+         */
+        public static final String LOCK_SYNC_ENCRYPTION_PASSWORD =
+            "lock_sync_encryption_password";
 
         /**
          * The Logging ID (a unique 64-bit value) as a hex string.

@@ -4733,6 +4733,17 @@ public final class ActivityManagerService  extends ActivityManagerNative
         }
     }
 
+    public String getCallingPackageForBroadcast(boolean foreground) {
+        BroadcastQueue queue = foreground ? mFgBroadcastQueue : mBgBroadcastQueue;
+        BroadcastRecord r = queue.getProcessingBroadcast();
+        if (r != null) {
+            return r.callerPackage;
+        } else {
+            Log.e(TAG, "Broadcast sender is only retrievable in the onReceive");
+        }
+        return null;
+    }
+
     private ActivityRecord getCallingRecordLocked(IBinder token) {
         ActivityRecord r = mMainStack.isInStackLocked(token);
         if (r == null) {
@@ -7724,6 +7735,13 @@ public final class ActivityManagerService  extends ActivityManagerNative
                 Slog.w(TAG, "getTopActivityExtras failed: crash calling " + activity);
                 return extras;
             }
+            if (pae.result != null) {
+                extras.putBundle(Intent.EXTRA_ASSIST_CONTEXT, pae.result);
+            }
+        }
+        synchronized (this) {
+            mPendingActivityExtras.remove(pae);
+            mHandler.removeCallbacks(pae);
         }
         synchronized (pae) {
             while (!pae.haveResult) {

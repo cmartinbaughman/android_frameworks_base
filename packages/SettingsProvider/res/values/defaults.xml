@@ -51,7 +51,7 @@
     <bool name="def_networks_available_notification_on">true</bool>
 
     <bool name="def_backup_enabled">false</bool>
-    <string name="def_backup_transport">com.google.android.backup/.BackupTransportService</string> 
+    <string name="def_backup_transport" translatable="false">android/com.android.internal.backup.LocalTransport</string>
 
     <!-- Default value for whether or not to pulse the notification LED when there is a
          pending notification -->
@@ -173,7 +173,7 @@
     <!-- Default for Settings.Secure.USER_SETUP_COMPLETE -->
     <bool name="def_user_setup_complete">false</bool>
 
-    <!-- Default for Settings.System.STATUS_BAR_BATTERY.
+    <!-- Default for Settings.System.STATUSBAR_BATTERY_ICON.
     0. Icon
     1. Text only
     2. Icon with text
@@ -203,4 +203,7 @@
 
     <!-- Default for Settings.System.UI_FORCE_OVERFLOW_BUTTON. -->
     <integer name="def_force_overflow_button">0</integer>
+
+    <!-- Default for Settings.Secure.DIALPAD_AUTOCOMPLETE. -->
+    <integer name="def_dialpad_autocomplete">1</integer>
 </resources>

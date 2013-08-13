@@ -130,9 +130,11 @@ import com.android.systemui.statusbar.policy.NetworkController;
 import com.android.systemui.statusbar.policy.NotificationRowLayout;
 import com.android.systemui.statusbar.policy.OnSizeChangedListener;
 import com.android.systemui.statusbar.policy.Prefs;
+import com.android.systemui.statusbar.policy.WeatherPanel;
 import com.android.systemui.aokp.AwesomeAction;
 import com.android.internal.util.aokp.AokpRibbonHelper;
 import com.android.systemui.aokp.AokpSwipeRibbon;
+
 
 import java.io.FileDescriptor;
 import java.io.IOException;
@@ -200,6 +202,8 @@ public class PhoneStatusBar extends BaseStatusBar {
     private AokpSwipeRibbon mAokpSwipeRibbonRight;
     private AokpSwipeRibbon mAokpSwipeRibbonBottom;
 
+    private boolean showingAltCluster = false;
+
     // These are no longer handled by the policy, because we need custom strategies for them
     BluetoothController mBluetoothController;
     DockBatteryController mDockBatteryController;
@@ -264,6 +268,12 @@ public class PhoneStatusBar extends BaseStatusBar {
     View mDateTimeView;
     View mClearButton;
     ImageView mSettingsButton, mNotificationButton;
+
+    // AOKP - weatherpanel
+    boolean mWeatherPanelEnabled;
+    WeatherPanel mWeatherPanel;
+    private String mShortClickWeather;
+    private String mLongClickWeather;
 
     private int shortClick = 0;
     private int longClick = 1;
@@ -340,7 +350,6 @@ public class PhoneStatusBar extends BaseStatusBar {
     private boolean mSuppressStatusBarDrags; // while a cling is up, briefly deaden the bar to give things time to settle
 
     int[] mAbsPos = new int[2];
-    Runnable mPostCollapseCleanup = null;
 
     private Animator mLightsOutAnimation;
     private Animator mLightsOnAnimation;
@@ -388,6 +397,19 @@ public class PhoneStatusBar extends BaseStatusBar {
             mStatusBarView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
             adjustBrightness(mInitialTouchX);
             mLinger = BRIGHTNESS_CONTROL_LINGER_THRESHOLD + 1;
+        }
+    };
+
+    private final Runnable mNotifyClearAll = new Runnable() {
+        @Override
+        public void run() {
+            if (DEBUG) {
+                Slog.v(TAG, "Notifying status bar of notification clear");
+            }
+            try {
+                mPile.setViewRemoval(true);
+                mBarService.onClearAllNotifications();
+            } catch (RemoteException ex) { }
         }
     };
 
@@ -605,6 +627,11 @@ public class PhoneStatusBar extends BaseStatusBar {
             mDateTimeView.setEnabled(true);
         }
 
+        // Weather
+        mWeatherPanel = (WeatherPanel) mStatusBarWindow.findViewById(R.id.weatherpanel);
+        mWeatherPanel.setOnClickListener(mWeatherPanelListener);
+        mWeatherPanel.setOnLongClickListener(mWeatherPanelLongClickListener);
+
         mSettingsObserver = new SettingsObserver(mHandler);
         mSettingsObserver.observe();
         updateSettings();
@@ -687,11 +714,16 @@ public class PhoneStatusBar extends BaseStatusBar {
         mSbBatteryController = (SbBatteryController)mStatusBarView.findViewById(R.id.battery_cluster);
         mNetworkController = new NetworkController(mContext);
         mBluetoothController = new BluetoothController(mContext);
-        mSignalCluster =
-                (SignalClusterView)mStatusBarView.findViewById(R.id.signal_cluster);
 
-        mNetworkController.addSignalCluster(mSignalCluster);
-        mSignalCluster.setNetworkController(mNetworkController);
+        if (!showingAltCluster) {
+            mSignalCluster = (SignalClusterView)mStatusBarView.findViewById(R.id.signal_cluster);
+            mNetworkController.addSignalCluster(mSignalCluster);
+            mSignalCluster.setNetworkController(mNetworkController);
+        } else {
+            mSignalCluster = (SignalClusterView)mStatusBarView.findViewById(R.id.signal_cluster_alt);
+            mNetworkController.addSignalCluster(mSignalCluster);
+            mSignalCluster.setNetworkController(mNetworkController);
+        }
 
         mHasDockBattery = mContext.getResources().getBoolean(
                 com.android.internal.R.bool.config_hasDockBattery);
@@ -2391,11 +2423,6 @@ public class PhoneStatusBar extends BaseStatusBar {
 
         // Close any "App info" popups that might have snuck on-screen
         dismissPopups();
-
-        if (mPostCollapseCleanup != null) {
-            mPostCollapseCleanup.run();
-            mPostCollapseCleanup = null;
-        }
     }
 
     /**
@@ -2670,6 +2697,7 @@ public class PhoneStatusBar extends BaseStatusBar {
             final View systemIcons = mStatusBarView.findViewById(R.id.statusIcons);
             final View signal = mStatusBarView.findViewById(R.id.signal_cluster);
             final View battery = mStatusBarView.findViewById(R.id.battery);
+            final View traffic = mStatusBarView.findViewById(R.id.traffic);
 
             final AnimatorSet lightsOutAnim = new AnimatorSet();
             lightsOutAnim.playTogether(
@@ -2678,7 +2706,8 @@ public class PhoneStatusBar extends BaseStatusBar {
                     ObjectAnimator.ofFloat(signal, View.ALPHA, 0),
                     ObjectAnimator.ofFloat(battery, View.ALPHA, 0.5f),
                     ObjectAnimator.ofFloat(mClock, View.ALPHA, 0.5f),
-                    ObjectAnimator.ofFloat(mCClock, View.ALPHA, 0.5f)
+                    ObjectAnimator.ofFloat(mCClock, View.ALPHA, 0.5f),
+                    ObjectAnimator.ofFloat(traffic, View.ALPHA, 0.5f)
                 );
             lightsOutAnim.setDuration(750);
 
@@ -2689,7 +2718,8 @@ public class PhoneStatusBar extends BaseStatusBar {
                     ObjectAnimator.ofFloat(signal, View.ALPHA, 1),
                     ObjectAnimator.ofFloat(battery, View.ALPHA, 1),
                     ObjectAnimator.ofFloat(mClock, View.ALPHA, 1),
-                    ObjectAnimator.ofFloat(mCClock, View.ALPHA, 1)
+                    ObjectAnimator.ofFloat(mCClock, View.ALPHA, 1),
+                    ObjectAnimator.ofFloat(traffic, View.ALPHA, 1)
                 );
             lightsOnAnim.setDuration(250);
 
@@ -2897,6 +2927,11 @@ public class PhoneStatusBar extends BaseStatusBar {
     }
 
     @Override
+    protected boolean isNotificationPanelFullyVisible() {
+        return mExpandedVisible && !isShowingSettings();
+    }
+
+    @Override
     public void updateExpandedViewPos(int thingy) {
         if (DEBUG) Slog.v(TAG, "updateExpandedViewPos");
 
@@ -2931,7 +2966,7 @@ public class PhoneStatusBar extends BaseStatusBar {
     private View.OnClickListener mClearButtonListener = new View.OnClickListener() {
         public void onClick(View v) {
             synchronized (mNotificationData) {
-                // animate-swipe all dismissable notifications, then animate the shade closed
+                // animate-swipe all dismissable notifications
                 int numChildren = mPile.getChildCount();
 
                 int scrollTop = mScrollView.getScrollY();
@@ -2944,64 +2979,41 @@ public class PhoneStatusBar extends BaseStatusBar {
                         snapshot.add(child);
                     }
                 }
+
                 if (snapshot.isEmpty()) {
                     animateCollapsePanels(CommandQueue.FLAG_EXCLUDE_NONE);
                     return;
                 }
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        // Decrease the delay for every row we animate to give the sense of
-                        // accelerating the swipes
-                        final int ROW_DELAY_DECREMENT = 10;
-                        int currentDelay = 140;
-                        int totalDelay = 0;
 
-                        // Set the shade-animating state to avoid doing other work during
-                        // all of these animations. In particular, avoid layout and
-                        // redrawing when collapsing the shade.
-                        mPile.setViewRemoval(false);
+                // Decrease the delay for every row we animate to give the sense of
+                // accelerating the swipes
+                final int ROW_DELAY_DECREMENT = 10;
+                int currentDelay = 140;
+                int totalDelay = 0;
 
-                        mPostCollapseCleanup = new Runnable() {
-                            @Override
-                            public void run() {
-                                if (DEBUG) {
-                                    Slog.v(TAG, "running post-collapse cleanup");
-                                }
-                                try {
-                                    mPile.setViewRemoval(true);
-                                    mBarService.onClearAllNotifications();
-                                } catch (Exception ex) { }
-                            }
-                        };
+                // Set the shade-animating state to avoid doing other work, in
+                // particular layout and redrawing, during all of these animations.
+                mPile.setViewRemoval(false);
 
-                        View sampleView = snapshot.get(0);
-                        int width = sampleView.getWidth();
-                        final int dir = sampleView.isLayoutRtl() ? -1 : +1;
-                        final int velocity = dir * width * 8; // 1000/8 = 125 ms duration
-                        for (final View _v : snapshot) {
-                            mHandler.postDelayed(new Runnable() {
-                                @Override
-                                public void run() {
-                                    mPile.dismissRowAnimated(_v, velocity);
-                                }
-                            }, totalDelay);
-                            currentDelay = Math.max(50, currentDelay - ROW_DELAY_DECREMENT);
-                            totalDelay += currentDelay;
+                View sampleView = snapshot.get(0);
+                int width = sampleView.getWidth();
+                final int dir = sampleView.isLayoutRtl() ? -1 : +1;
+                final int velocity = dir * width * 8; // 1000/8 = 125 ms duration
+                for (final View _v : snapshot) {
+                    mHandler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            mPile.dismissRowAnimated(_v, velocity);
                         }
-                        // Delay the collapse animation until after all swipe animations have
-                        // finished. Provide some buffer because there may be some extra delay
-                        // before actually starting each swipe animation. Ideally, we'd
-                        // synchronize the end of those animations with the start of the collaps
-                        // exactly.
-                        mHandler.postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                animateCollapsePanels(CommandQueue.FLAG_EXCLUDE_NONE);
-                            }
-                        }, totalDelay + 225);
-                    }
-                }).start();
+                    }, totalDelay);
+                    currentDelay = Math.max(50, currentDelay - ROW_DELAY_DECREMENT);
+                    totalDelay += currentDelay;
+                }
+
+                // After ending all animations, tell the service to remove the
+                // notifications, which will trigger collapsing the shade
+                final View lastEntry = snapshot.get(snapshot.size() - 1);
+                mPile.runOnDismiss(lastEntry, mNotifyClearAll);
             }
         }
     };
@@ -3083,6 +3095,23 @@ public class PhoneStatusBar extends BaseStatusBar {
         public boolean onLongClick(View v) {
             animateCollapsePanels();
             AwesomeAction.launchAction(mContext, mClockActions[longClick]);
+            return true;
+        }
+    };
+
+    private View.OnClickListener mWeatherPanelListener = new View.OnClickListener() {
+        public void onClick(View v) {
+            vibrate();
+            animateCollapsePanels();
+            AwesomeAction.launchAction(mContext, mShortClickWeather);
+        }
+    };
+
+    private View.OnLongClickListener mWeatherPanelLongClickListener = new View.OnLongClickListener() {
+        @Override
+        public boolean onLongClick(View v) {
+            animateCollapsePanels();
+            AwesomeAction.launchAction(mContext, mLongClickWeather);
             return true;
         }
     };
@@ -3505,6 +3534,8 @@ public class PhoneStatusBar extends BaseStatusBar {
         void observe() {
             ContentResolver resolver = mContext.getContentResolver();
             resolver.registerContentObserver(Settings.System.getUriFor(
+                    Settings.System.STATUSBAR_SIGNAL_CLUSTER_ALT), false, this);
+            resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.STATUS_BAR_BRIGHTNESS_CONTROL), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.SCREEN_BRIGHTNESS_MODE), false, this);
@@ -3527,36 +3558,9 @@ public class PhoneStatusBar extends BaseStatusBar {
             resolver.registerContentObserver(Settings.System.getUriFor(
                     Settings.System.RIBBON_TARGETS_ICONS[AokpRibbonHelper.NOTIFICATIONS]), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.ENABLE_RIBBON_TEXT[AokpRibbonHelper.NOTIFICATIONS]), false, this);
+                    Settings.System.WEATHER_PANEL_SHORTCLICK), false, this);
             resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_TEXT_COLOR[AokpRibbonHelper.NOTIFICATIONS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_ICON_COLORIZE[AokpRibbonHelper.NOTIFICATIONS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_ICON_SIZE[AokpRibbonHelper.NOTIFICATIONS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_ICON_SPACE[AokpRibbonHelper.NOTIFICATIONS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_ICON_VIBRATE[AokpRibbonHelper.NOTIFICATIONS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_TARGETS_SHORT[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_TARGETS_LONG[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_TARGETS_ICONS[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.ENABLE_RIBBON_TEXT[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_ICON_SIZE[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_ICON_SPACE[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_ICON_VIBRATE[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_ICON_COLORIZE[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            resolver.registerContentObserver(Settings.System.getUriFor(
-                    Settings.System.RIBBON_TEXT_COLOR[AokpRibbonHelper.QUICK_SETTINGS]), false, this);
-            update();
+                    Settings.System.WEATHER_PANEL_LONGCLICK), false, this);
         }
 
         @Override
@@ -3607,10 +3611,35 @@ public class PhoneStatusBar extends BaseStatusBar {
         } else {
             mClockDoubleClicked = true;
         }
+
+        mWeatherPanelEnabled = (Settings.System.getInt(cr,
+                Settings.System.STATUSBAR_WEATHER_STYLE, 2) == 1)
+                && (Settings.System.getBoolean(cr, Settings.System.USE_WEATHER, false));
+
+        mWeatherPanel.setVisibility(mWeatherPanelEnabled ? View.VISIBLE : View.GONE);
+
+        mShortClickWeather = Settings.System.getString(cr,
+                Settings.System.WEATHER_PANEL_SHORTCLICK);
+
+        mLongClickWeather = Settings.System.getString(cr,
+                Settings.System.WEATHER_PANEL_LONGCLICK);
+
+        if (mShortClickWeather == null || mShortClickWeather.equals("")) {
+            mShortClickWeather = "**null**";
+        }
+        if (mLongClickWeather == null || mLongClickWeather.equals("")) {
+            mLongClickWeather = "**null**";
+        }
+
         mCurrentUIMode = Settings.System.getInt(cr,
                 Settings.System.CURRENT_UI_MODE, 0);
 
         mCurrentUIMode = Settings.System.getInt(cr,Settings.System.CURRENT_UI_MODE, 0);
+
+        boolean clustdefault = mContext.getResources().getBoolean(R.bool.statusbar_alt_signal_layout);
+        showingAltCluster = Settings.System.getBoolean(cr,
+                Settings.System.STATUSBAR_SIGNAL_CLUSTER_ALT, clustdefault);
+
         updateRibbonTargets();
     }
 

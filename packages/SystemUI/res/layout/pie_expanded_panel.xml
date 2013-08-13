@@ -23,7 +23,7 @@
     android:orientation="vertical"
     android:gravity="center_vertical">
 
-	<RelativeLayout	
+        <RelativeLayout
             android:id="@+id/content_header"
             android:layout_height="wrap_content"
             android:layout_width="match_parent"
@@ -69,6 +69,7 @@
                 <ImageView android:id="@+id/clear_all_button"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
                     android:layout_centerVertical="true"
                     android:src="@drawable/ic_notify_clear"
                     android:contentDescription="@string/accessibility_clear_all"
@@ -77,16 +78,17 @@
                 <ImageView android:id="@+id/halo_button"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_centerVertical="true"
                     android:layout_toRightOf="@id/clear_all_button"
-                    android:layout_marginLeft="8dp"
+                    android:layout_marginTop="12dp"
+                    android:layout_marginLeft="20dp"
+                    android:layout_centerVertical="true"
                     android:src="@drawable/ic_notify_halo_normal"
                     android:contentDescription="@string/accessibility_halo"
                     />
 
             </RelativeLayout>
 
-        </RelativeLayout>            
+        </RelativeLayout>
 
         <ScrollView
             android:id="@+id/content_scroll"

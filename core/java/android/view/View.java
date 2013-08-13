@@ -2359,6 +2359,13 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     public static final int SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN = 0x00000400;
 
     /**
+     * @hide
+     *
+     * Flag to force showing the navigation bar even in expanded desktop mode.
+     */
+    public static final int SYSTEM_UI_FLAG_SHOW_NAVIGATION_IN_EXPANDED_DESKTOP = 0x00008000;
+
+    /**
      * @deprecated Use {@link #SYSTEM_UI_FLAG_LOW_PROFILE} instead.
      */
     public static final int STATUS_BAR_HIDDEN = SYSTEM_UI_FLAG_LOW_PROFILE;
@@ -5697,7 +5704,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
      * @return Return true if this view applied the insets and it should not
      * continue propagating further down the hierarchy, false otherwise.
      * @see #getFitsSystemWindows()
-     * @see #setFitsSystemWindows(boolean) 
+     * @see #setFitsSystemWindows(boolean)
      * @see #setSystemUiVisibility(int)
      */
     protected boolean fitSystemWindows(Rect insets) {
@@ -7438,9 +7445,9 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
      */
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
         int ret = sendTreatAsTouchEvent(event);
-		if (ret != 0){
-			return (ret == 1 ? true : false);
-		}
+        if (ret != 0){
+            return (ret == 1 ? true : false);
+        }
 
         if (mInputEventConsistencyVerifier != null) {
             mInputEventConsistencyVerifier.onGenericMotionEvent(event, 0);
@@ -18738,26 +18745,26 @@ public class View implements Drawable.Callback, KeyEvent.Callback,
     private boolean mProcessGenericMotionAsPointer = false;
 
     public void setProcessGenericMotionAsPointer(boolean b){
-		mProcessGenericMotionAsPointer = b;
-	}
+        mProcessGenericMotionAsPointer = b;
+    }
 
     public int sendTreatAsTouchEvent(MotionEvent event){
-		int ret = 0;
-		boolean doIt = false;
-		if (android.os.Build.BRAND.startsWith("SEMC") && android.os.Build.MODEL.startsWith("R800")){
-			doIt = event.getSource() == InputDevice.SOURCE_TOUCHPAD;
-			if (doIt){
-				doIt = mProcessGenericMotionAsPointer;
-				if (!doIt) {
-					doIt = (android.os.SystemProperties.getInt("mod.touchpad.activated",0) == 1);
-				}
-				if (doIt) {
-					ret = (dispatchTouchEvent(event) ? 1 : 2);
-				}
-			}
-		}
-		return ret;
-	}
+        int ret = 0;
+        boolean doIt = false;
+        if (android.os.Build.BRAND.startsWith("SEMC") && android.os.Build.MODEL.startsWith("R800")){
+            doIt = event.getSource() == InputDevice.SOURCE_TOUCHPAD;
+            if (doIt){
+                doIt = mProcessGenericMotionAsPointer;
+                if (!doIt) {
+                    doIt = (android.os.SystemProperties.getInt("mod.touchpad.activated",0) == 1);
+                }
+                if (doIt) {
+                    ret = (dispatchTouchEvent(event) ? 1 : 2);
+                }
+            }
+        }
+        return ret;
+    }
 
     private class MatchIdPredicate implements Predicate<View> {
         public int mId;
